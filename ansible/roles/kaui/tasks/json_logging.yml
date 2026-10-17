@@ -1,0 +1,50 @@
+---
+- name: download Logstash third-party dependencies
+  become: true
+  get_url:
+    url: "{{ nexus_url }}/content/repositories/{{ nexus_repository }}/{{ item.group_path }}/{{ item.artifact_id }}/{{ item.version }}/{{ item.artifact_id }}-{{ item.version }}.jar"
+    dest: "{{ item.dest }}"
+  with_items:
+    - group_path: com/fasterxml/jackson/core
+      artifact_id: jackson-databind
+      version: '2.11.3'
+      dest: /opt/jackson-databind.jar
+    - group_path: com/fasterxml/jackson/core
+      artifact_id: jackson-core
+      version: '2.11.3'
+      dest: /opt/jackson-core.jar
+    - group_path: com/fasterxml/jackson/core
+      artifact_id: jackson-annotations
+      version: '2.11.3'
+      dest: /opt/jackson-annotations.jar
+  tags:
+    - kaui-logback
+    - logstash
+    - download
+
+- name: set correct permissions
+  become: true
+  file: path=/opt/{{ item.name }} owner={{ tomcat_owner }} group={{ tomcat_group }}
+  with_items:
+    - name: jackson-databind.jar
+    - name: jackson-core.jar
+    - name: jackson-annotations.jar
+  tags:
+    - kaui-logback
+    - logstash
+
+- name: ensure Logstash third-party dependencies exist in the webapp
+  copy:
+    src: "/opt/{{ item.name }}"
+    dest: "{{ catalina_base }}/webapps/ROOT/WEB-INF/lib/{{ item.name }}"
+    owner: "{{ tomcat_owner }}"
+    group: "{{ tomcat_group }}"
+    mode: '0644'
+  with_items:
+    - name: jackson-databind.jar
+    - name: jackson-core.jar
+    - name: jackson-annotations.jar
+  tags:
+    - kaui-logback
+    - logstash
+    - tomcat

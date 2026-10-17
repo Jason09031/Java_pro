@@ -1,0 +1,110 @@
+---
+- name: ensure KPM install dir exists
+  become: true
+  file:
+    path: "{{ kpm_install_dir }}"
+    state: directory
+    mode: u=rwx,g=rx,o=rx
+  tags: kpm
+
+- name: download kpm release metadata
+  uri:
+    url: "{{ nexus_url }}/content/repositories/{{ nexus_repository }}/org/kill-bill/billing/installer/kpm/maven-metadata.xml"
+    return_content: yes
+  register: kpm_metadata
+  when: kpm_version is undefined
+  tags: kpm
+
+# We don't use the xml module to avoid a dependency on lxml
+- name: set kpm_version
+  set_fact:
+    # maven-metadata.xml is often confusing (wrong?) w.r.t. how <latest> and <release> elements are populated. Just pick the last entry of <versions>
+    kpm_version: "{{ kpm_metadata.content | regex_findall('<version>(.*)</version>') | last }}"
+  when: kpm_version is undefined
+  tags: kpm
+
+- name: check if KPM is already installed
+  stat:
+    path: "{{ kpm_install_dir }}/kpm-{{ kpm_version }}-linux-{{ ansible_architecture }}/kpm"
+  register: kpm_bin
+  tags: kpm
+
+- name: check if pre-built KPM exists for this arch
+  uri:
+    url: "{{ nexus_url }}/service/local/artifact/maven/redirect?r={{ nexus_repository }}&g=org.kill-bill.billing.installer&a=kpm&c=linux-{{ ansible_architecture }}&e=tar.gz&v={{ kpm_version }}"
+    method: HEAD
+  register: kpm_arch_test
+  failed_when: kpm_arch_test.status is undefined or kpm_arch_test.status <= 0
+  when: not kpm_bin.stat.exists
+  tags: kpm
+
+- name: download noarch KPM
+  become: true
+  get_url:
+    # Use the redirect API to support SNAPSHOT
+    url: "{{ nexus_url }}/service/local/artifact/maven/redirect?r={{ nexus_repository }}&g=org.kill-bill.billing.installer&a=kpm&c=noarch&e=tar.gz&v={{ kpm_version }}"
+    dest: "{{ kpm_install_dir }}/kpm-{{ kpm_version }}-noarch.tar.gz"
+    owner: "{{ kpm_owner }}"
+    group: "{{ kpm_group }}"
+  when: not kpm_bin.stat.exists and kpm_arch_test.status >= 400
+  tags: kpm
+
+- name: install noarch KPM
+  become: true
+  unarchive:
+    src: "{{ kpm_install_dir }}/kpm-{{ kpm_version }}-noarch.tar.gz"
+    remote_src: True
+    dest: "{{ kpm_install_dir }}"
+    owner: "{{ kpm_owner }}"
+    group: "{{ kpm_group }}"
+  when: not kpm_bin.stat.exists and kpm_arch_test.status >= 400
+  tags: kpm
+
+# To make things easier
+- name: rename noarch KPM directory
+  become: true
+  command: "mv {{ kpm_install_dir }}/kpm-{{ kpm_version }}-noarch {{ kpm_install_dir }}/kpm-{{ kpm_version }}-linux-{{ ansible_architecture }}"
+  when: not kpm_bin.stat.exists and kpm_arch_test.status >= 400
+  tags: kpm
+
+- name: download pre-built KPM
+  become: true
+  get_url:
+    # Use the redirect API to support SNAPSHOT
+    url: "{{ nexus_url }}/service/local/artifact/maven/redirect?r={{ nexus_repository }}&g=org.kill-bill.billing.installer&a=kpm&c=linux-{{ ansible_architecture }}&e=tar.gz&v={{ kpm_version }}"
+    dest: "{{ kpm_install_dir }}/kpm-{{ kpm_version }}-linux-{{ ansible_architecture }}.tar.gz"
+    owner: "{{ kpm_owner }}"
+    group: "{{ kpm_group }}"
+  when: not kpm_bin.stat.exists and kpm_arch_test.status < 400
+  tags: kpm
+
+- name: install pre-built KPM
+  become: true
+  unarchive:
+    src: "{{ kpm_install_dir }}/kpm-{{ kpm_version }}-linux-{{ ansible_architecture }}.tar.gz"
+    remote_src: True
+    dest: "{{ kpm_install_dir }}"
+    owner: "{{ kpm_owner }}"
+    group: "{{ kpm_group }}"
+  when: not kpm_bin.stat.exists and kpm_arch_test.status < 400
+  tags: kpm
+
+- name: symlink install directory
+  become: true
+  file: src="{{ kpm_install_dir }}/kpm-{{ kpm_version }}-linux-{{ ansible_architecture }}" path="{{ kpm_path }}" state=link
+  tags: kpm
+
+# The first time KPM is run, a Gemfile.lock needs to written out
+- name: initialize KPM
+  become: true
+  command: |
+    "{{ kpm_path }}/kpm" version
+  args:
+    creates: "{{ kpm_path }}/lib/vendor/Gemfile.lock"
+  tags: kpm
+
+# The individual files have the correct permissions already, but not the top directory
+- name: set correct permissions
+  become: true
+  file: path="{{ kpm_install_dir }}/kpm-{{ kpm_version }}-linux-{{ ansible_architecture }}" owner={{ kpm_owner }} group={{ kpm_group }} recurse=yes
+  tags: kpm

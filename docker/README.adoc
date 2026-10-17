@@ -1,0 +1,152 @@
+:toc: macro
+:toc-title:
+:toclevels: 9
+
+[[docker-images-for-kill-bill]]
+# Docker images for Kill Bill
+
+toc::[]
+
+[[available-images]]
+## Available images
+
+* `killbill/base:latest`: Shared base image with Tomcat and KPM inside Ubuntu 20.04 LTS. It also contains Ansible and our playbooks from https://github.com/killbill/killbill-cloud. It starts Tomcat on startup.
+* `killbill/killbill:latest`: Empty base Kill Bill image. Includes the `killbill-flyway` utility. It runs `kpm install` on startup. If no custom `kpm.yml` file is specified, the latest version of Kill Bill is downloaded.
+* `killbill/killbill:0.X.Y`: Image with a specific version of Kill Bill installed.
+* `killbill/kaui:latest`: Empty base Kaui image. It runs `kpm install` on startup. If no custom `kpm.yml` file is specified, the latest version of Kaui is downloaded.
+* `killbill/kaui:0.X.Y`: Image with a specific version of Kaui installed.
+* `killbill/killbill:build`: Official build environment for all published Kill Bill artifacts (useful for developers).
+
+[[tips-and-tricks]]
+### Tips and tricks
+
+The container STDOUT output is JSON formatted for ease of integration with log aggregation systems. To access human-friendly logs, look at the log files inside the container instead:
+
+```
+# logs/kaui.out for Kaui
+docker exec CONTAINER_ID tail -f logs/killbill.out
+```
+
+[[environment-variables]]
+### Environment variables
+
+See https://docs.killbill.io/latest/userguide_configuration.html for more details.
+
+[[killbill-variables]]
+#### Kill Bill specific variables
+
+For jConsole and remote debugging, you need to pass the host IP address as `ENV_HOST_IP` when starting the container (e.g. 192.168.99.100 if using docker-machine).
+
+To configure Kill Bill, specify properties in the following format, e.g. `KB_org_killbill_dao_user` for `org.killbill.dao.user`.
+
+[[kaui-variables]]
+#### Kaui specific variables
+
+For PostgreSQL support specifically, you need to specify `KAUI_DB_ADAPTER=postgresql`.
+
+[[changes-since-0.24.7]]
+## Changes since 0.24.7
+* Tomcat has been updated from *8.5.x* to *9.0.x*
+
+[[changes-since-0.22.27]]
+## Changes since 0.22.27
+
+* Environment variables are now respected for both Kill Bill and Kaui: the ansible playbook to generate the properties files isn't needed anymore and has been removed from the start sequence
+
+[[changes-since-0.22.17]]
+## Changes since 0.22.17
+
+* The base image has been upgraded from ubuntu:16.04 LTS to ubuntu:20.04 LTS
+* Python has been upgraded from 2 to 3
+* STDOUT logs are JSON-formatted by default. You can disable this behavior via `LOGSTASH_ENABLED=false`
+* Tomcat has been updated from 8.5.16 to 8.5.59. Any newlines present in CATALINA_OPTS and/or JAVA_OPTS will no longer removed (https://bz.apache.org/bugzilla/show_bug.cgi?id=63815)
+
+[[changes-since-0.18]]
+## Changes since 0.18
+
+Starting with 0.19, the images are built differently.
+
+First, Tomcat isn’t installed by `apt` anymore. Instead, we use our Tomcat Ansible role to do it. Among changes:
+
+* Tomcat has been upgraded from 7 to 8.5.
+* Tomcat user is `tomcat` (password `tomcat`).
+* Installation directory (`CATALINA_HOME`) is `/opt` (symlinked to `/usr/share/tomcat`). `CATALINA_BASE` is at /var/lib/tomcat.
+* Instead of the custom `/etc/init.d/tomcat.sh` script, you should now directly use the Tomcat scripts under `$CATALINA_HOME/bin` (e.g. `$CATALINA_HOME/bin/catalina.sh run`). This also means that the special `jvm` section in the `kpm.yml` isn’t supported anymore to set JVM properties. Take a look at `$CATALINA_BASE/bin/setenv.sh` instead.
+
+Second, KPM isn’t installed by JRuby gems anymore. We now use our KPM Ansible role as well. Among changes:
+
+* Pre-built Ruby binaries specifically for KPM are installed, there is no more system wide Ruby available.
+* Regarding binaries to install, the previous behavior was to look for `/etc/killbill/kpm.yml` on startup and generate it from a combination of environment variables, `/etc/killbill/kpm.yml.erb`, and `/etc/killbillkpm.yml.erb.overlay` if not present. This isn’t supported anymore, instead you should bind mount `/var/lib/killbill/kpm.yml` when launching the Docker image. This also means that automatic installation of plugins through environment variables like `-e KILLBILL_PLUGIN_STRIPE=1` won’t work anymore (specify them in your `kpm.yml` instead).
+* Regarding configuration, the previous behavior was to look for `/etc/killbill/killbill.properties` on startup and generate it from the `properties` section of the `kpm.yml` if not present. This isn’t supported anymore, instead you should bind mount `/var/lib/killbill/killbill.properties` when launching the Docker image.
+
+Python and Ansible are now also installed in the image, in case you need to extend the image through custom Ansible roles.
+
+[[build]]
+## Build
+
+All images are based upon a `base` image which (in theory) should not have to be rebuilt too often. In order to build it:
+
+....
+cd docker/templates/base/latest
+docker build --no-cache -t killbill/base:latest .
+....
+
+To build an image:
+
+....
+make
+....
+
+To build a specific Kill Bill version:
+
+....
+make -e VERSION=0.x.y
+....
+
+To build Kaui:
+
+....
+make -e TARGET=kaui -e VERSION=0.x.y
+....
+
+To build MariaDB:
+
+....
+make -e TARGET=mariadb -e VERSION=0.x # e.g. 0.18
+....
+
+To debug it:
+
+....
+make run
+....
+
+To cleanup containers and images:
+
+....
+make clean
+....
+
+To run it:
+
+....
+make run-container
+....
+
+To publish an image:
+
+....
+# Build the image locally
+export TARGET=killbill # or base, kaui
+export VERSION=latest # or 0.18.0
+make -e TARGET=$TARGET -e VERSION=$VERSION
+docker login
+docker push killbill/$TARGET:$VERSION
+docker logout
+....
+
+### Custom ansible playboook
+
+```
+docker build --no-cache --build-arg KILLBILL_CLOUD_VERSION=work-for-release-0.19.x -t killbill/base:0.19.x .
+```

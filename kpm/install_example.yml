@@ -1,0 +1,24 @@
+killbill:
+  # If no version is specified, LATEST is assumed
+  version: LATEST
+  webapp_path: /var/tmp/tomcat/webapps/ROOT
+  plugins_dir: /var/tmp/bundles
+  plugins:
+    java:
+      - name: analytics-plugin
+        version: 0.6.0
+  nexus:
+    ssl_verify: false
+    url: https://oss.sonatype.org
+    repository: releases
+    # You can use https://github.com/reidmorrison/symmetric-encryption for encryption
+    #username: bob
+    #password: bob
+kaui:
+  # If no version is specified, LATEST is assumed
+  version: LATEST
+  webapp_path: /var/tmp/tomcat/webapps/kaui
+  nexus:
+    ssl_verify: false
+    url: https://oss.sonatype.org
+    repository: releases

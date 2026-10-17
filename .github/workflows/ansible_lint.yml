@@ -1,0 +1,38 @@
+name: ansible_lint
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  ansible_lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Lint Ansible Playbook
+        # TODO There's work to upgrade to 6.x
+        uses: ansible/ansible-lint-action@2878af4748adf988a42b3ad88a94051dba635fba
+        with:
+          # FIXME
+          # Globbing is broken at the moment:
+          # https://github.com/ansible/ansible-lint-action/issues/30
+          #targets: "ansible/*.{yaml,yml}"
+          targets: |
+            ansible/diagnostic.yml
+            ansible/flyway.yml
+            ansible/kaui.yml
+            ansible/kaui_json_logging.yml
+            ansible/killbill.yml
+            ansible/killbill_json_logging.yml
+            ansible/kpm.yml
+            ansible/migrations.yml
+            ansible/plugin.yml
+            ansible/tomcat.yml
+            ansible/tomcat_restart.yml
+            ansible/tomcat_stop.yml
+          args: "-x 204"
+          override-deps: |
+            ansible==2.10.7
+            ansible-base==2.10.5
+            ansible-lint==5.3.2

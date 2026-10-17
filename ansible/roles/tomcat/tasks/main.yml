@@ -1,0 +1,44 @@
+---
+- name: ensure Tomcat dirs exist
+  become: true
+  file: path={{ catalina_base }}/{{ item }} state=directory owner={{ tomcat_owner }} group={{ tomcat_group }} mode=u=rwx,g=rx,o=rx
+  with_items:
+    - bin
+    - conf
+    - lib
+    - logs
+    - "{{ kb_webapps }}"
+    - "{{ kaui_webapps }}"
+    - work
+    - temp
+  tags: tomcat
+
+# Generate Tomcat configuration files based on environment variables
+- name: generate Tomcat files
+  become: true
+  template:
+    src: "{{ item.src }}/{{ item.name }}.j2"
+    dest: "{{ item.dest }}/{{ item.name }}"
+    mode: "{{ item.mode }}"
+    owner: "{{ tomcat_owner }}"
+    group: "{{ tomcat_group }}"
+    # If the files already exist, don't clobber them
+    force: no
+  with_items:
+    - src: tomcat/conf
+      name: context.xml
+      mode: u=rw,g=r,o=r
+      dest: "{{ catalina_base }}/conf"
+    - src: tomcat/conf
+      name: server.xml
+      mode: u=rw,g=r,o=r
+      dest: "{{ catalina_base }}/conf"
+    - src: tomcat/conf
+      name: setenv.sh
+      mode: u=rwx,g=rx,o=rx
+      dest: "{{ catalina_base }}/bin"
+    - src: tomcat/conf
+      name: web.xml
+      mode: u=rw,g=r,o=r
+      dest: "{{ catalina_base }}/conf"
+  tags: tomcat

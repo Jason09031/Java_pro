@@ -1,0 +1,8 @@
+---
+- name: Install Flyway
+  hosts: all
+  tasks:
+    - name: setup Ruby
+      import_tasks: roles/common/tasks/main.yml
+    - name: install Flyway
+      import_tasks: roles/migrations/tasks/flyway.yml
